@@ -1,0 +1,78 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+
+# 1. Generate Synthetic Seismic Magnitude Data
+np.random.seed(42)
+timesteps = 500
+time = np.arange(timesteps)
+
+# Synthetic seismic activity (magnitude) with some noise and patterns
+magnitudes = np.sin(time * 0.05) + np.random.normal(0, 0.3, size=timesteps) + 4.5  # magnitudes ~4.5 to 5.5
+
+df = pd.DataFrame({
+    'time': time,
+    'magnitude': magnitudes
+})
+
+# 2. Preprocessing: Normalize and Window the Data
+scaler = MinMaxScaler()
+magnitudes_scaled = scaler.fit_transform(df[['magnitude']])
+
+# Define sequence length for LSTM
+sequence_length = 20
+
+X = []
+y = []
+
+for i in range(len(magnitudes_scaled) - sequence_length):
+    X.append(magnitudes_scaled[i:i + sequence_length])
+    y.append(magnitudes_scaled[i + sequence_length])
+
+X = np.array(X)
+y = np.array(y)
+
+# 3. Split into train/test sets
+split_index = int(len(X) * 0.8)
+X_train, X_test = X[:split_index], X[split_index:]
+y_train, y_test = y[:split_index], y[split_index:]
+
+# 4. Build the LSTM Model
+model = Sequential([
+    LSTM(50, return_sequences=False, input_shape=(sequence_length, 1)),
+    Dense(1)
+])
+
+model.compile(optimizer='adam', loss='mean_squared_error')
+model.summary()
+
+# 5. Train the Model
+history = model.fit(X_train, y_train, epochs=20, batch_size=16, validation_data=(X_test, y_test), verbose=1)
+
+# 6. Forecasting
+y_pred_scaled = model.predict(X_test)
+y_pred = scaler.inverse_transform(y_pred_scaled)
+y_test_actual = scaler.inverse_transform(y_test)
+
+# 7. Plot Actual vs Predicted
+plt.figure(figsize=(10, 5))
+plt.plot(y_test_actual, label='Actual Magnitude')
+plt.plot(y_pred, label='Predicted Magnitude')
+plt.title('Seismic Magnitude Forecasting with LSTM')
+plt.xlabel('Time Step')
+plt.ylabel('Magnitude')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# 8. Export Forecast Data
+forecast_df = pd.DataFrame({
+    'actual_magnitude': y_test_actual.flatten(),
+    'predicted_magnitude': y_pred.flatten()
+})
+forecast_df.to_excel("seismic_forecast_lstm.xlsx", index=False)
+print("📁 Forecast data exported to 'seismic_forecast_lstm.xlsx'")
